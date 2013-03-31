@@ -1256,36 +1256,36 @@ void displayModesMessageTabular(struct modesMessage *mm, struct aircraft *a) {
     }
     // DF message type DFxx
     printf(" DF%-2d", mm->msgtype);
-	// Aircraft Identification (ACID, BDS20)
-	if (mm->flight[0] == 0)
-		printf(" %-8s", "-");
-	else
-		printf(" %-8s", mm->flight);
+    // Aircraft Identification (ACID, BDS20)
+    if (mm->flight[0] == 0)
+        printf(" %-8s", "-");
+    else
+        printf(" %-8s", mm->flight);
 
-	// mode A code
-	if (mm->msgtype == 5 || mm->msgtype == 21) {
-		printf(" A%04d", mm->identity);
-	} else {
-		printf(" %5s", "-");
-	}	
-	
-	// mode C (altitude)
-	if (mm->msgtype == 0 || mm->msgtype == 4 || mm->msgtype == 20 || (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18)) {
-		printf(" %5d", mm->altitude);
-	} else {
-		printf(" %5s", "-");
-	}
-	
-	// latitude & longitude
-	if (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18 && a->lat != 0 && a->lon != 0) {
-		printf(" %14.10f %13.10f", a->lat, a->lon);
-	} else {
-		printf(" %14s %13s", "-", "-");
-	}
-			
+    // mode A code
+    if (mm->msgtype == 5 || mm->msgtype == 21) {
+        printf(" A%04d", mm->identity);
+    } else {
+        printf(" %5s", "-");
+    }   
+    
+    // mode C (altitude)
+    if (mm->msgtype == 0 || mm->msgtype == 4 || mm->msgtype == 20 || (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18)) {
+        printf(" %5d", mm->altitude);
+    } else {
+        printf(" %5s", "-");
+    }
+    
+    // latitude & longitude
+    if (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18 && a->lat != 0 && a->lon != 0) {
+        printf(" %14.10f %13.10f", a->lat, a->lon);
+    } else {
+        printf(" %14s %13s", "-", "-");
+    }
+            
     // details
     if (mm->msgtype == 0) {
-		printf(" ACAS");
+        printf(" ACAS");
     } else if (mm->msgtype == 4 || mm->msgtype == 20) {
         printf(" ROLLCALL FS=%d,DR=%d,UM=%d", mm->fs, mm->dr, mm->um);
         if (mm->msgtype == 20) {
@@ -1298,46 +1298,10 @@ void displayModesMessageTabular(struct modesMessage *mm, struct aircraft *a) {
         }
     } else if (mm->msgtype == 11) {
         printf(" ALLCALL  CA=%d", mm->ca);
-	} else if (mm->msgtype == 16) {
-		printf(" ACAS");
+    } else if (mm->msgtype == 16) {
+        printf(" ACAS");
     } else if (mm->msgtype == 17) {
         printf(" ADS-B    CA=%d,ME=%d/%d", mm->ca, mm->metype, mm->mesub);
-
-        // Decode the extended squitter message.
-        /* 
-        if (mm->metype >= 1 && mm->metype <= 4) {
-            // Aircraft identification.
-            char *ac_type_str[4] = {
-                "Aircraft Type D",
-                "Aircraft Type C",
-                "Aircraft Type B",
-                "Aircraft Type A"
-            };
-            printf(",actype=%s", ac_type_str[mm->aircraft_type]);
-            printf(",acid=%s", mm->flight);
-        } else if (mm->metype >= 9 && mm->metype <= 18) {
-            printf(",F=%s", mm->fflag ? "odd" : "even");
-            printf(",T=%s", mm->tflag ? "UTC" : "non-UTC");
-            printf(",Lat=%d", mm->raw_latitude);
-            printf(",Lon=%d", mm->raw_longitude);
-        } else if (mm->metype == 19 && mm->mesub >= 1 && mm->mesub <= 4) {
-            if (mm->mesub == 1 || mm->mesub == 2) {
-                // Velocity
-                printf(",EW-direction=%d", mm->ew_dir);
-                printf(",EW-velocity=%d", mm->ew_velocity);
-                printf(",NS-direction=%d", mm->ns_dir);
-                printf(",NS-velocity=%d", mm->ns_velocity);
-                printf(",VerticalRateSrc=%d", mm->vert_rate_source);
-                printf(",VerticalRateSign=%d", mm->vert_rate_sign);
-                printf(",VerticalRate=%d", mm->vert_rate);
-            } else if (mm->mesub == 3 || mm->mesub == 4) {
-                printf(",HeadingStatus=%d", mm->heading_is_valid);
-                printf(",Heading=%d", mm->heading);
-            }
-        } else {
-            printf(",UNK-ME=%d/%d", mm->metype, mm->mesub);
-        }
-        */
     } else {
         if (Modes.check_crc)
             printf("UNK-DF=%d", mm->msgtype);
@@ -1668,10 +1632,10 @@ void useModesMessage(struct modesMessage *mm) {
          * interface is enabled. */
         if (Modes.interactive || Modes.stat_http_requests > 0 || Modes.stat_sbs_connections > 0 || Modes.tabular) {
             struct aircraft *a = interactiveReceiveData(mm);
-			// Feed SBS output clients.
+            // Feed SBS output clients.
             if (a && Modes.stat_sbs_connections > 0) modesSendSBSOutput(mm, a);
-			// tabular technical output format
-			if(Modes.tabular) displayModesMessageTabular(mm, a);
+            // tabular technical output format
+            if(Modes.tabular) displayModesMessageTabular(mm, a);
         }
         /* In non-interactive way, display messages on standard output. */
         if (!Modes.interactive && !Modes.tabular) {
