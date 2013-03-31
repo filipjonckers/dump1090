@@ -1230,7 +1230,7 @@ void displayModesMessage(struct modesMessage *mm) {
 
 /* This function gets a decoded Mode S Message and prints it on the screen
  * in a human readable format. */
-void displayModesMessageTabular(struct modesMessage *mm) {
+void displayModesMessageTabular(struct modesMessage *mm, struct aircraft *a) {
     int j;
     // Mode S 24 bit address
     printf("%02X%02X%02X ", mm->aa1, mm->aa2, mm->aa3);
@@ -1262,48 +1262,46 @@ void displayModesMessageTabular(struct modesMessage *mm) {
 	else
 		printf(" %-8s", mm->flight);
 
+	// mode A code
+	if (mm->msgtype == 5 || mm->msgtype == 21) {
+		printf(" A%04d", mm->identity);
+	} else {
+		printf(" %5s", "-");
+	}	
+	
+	// mode C (altitude)
+	if (mm->msgtype == 0 || mm->msgtype == 4 || mm->msgtype == 20 || (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18)) {
+		printf(" %5d", mm->altitude);
+	} else {
+		printf(" %5s", "-");
+	}
+	
+	// latitude & longitude
+	if (mm->msgtype == 17 && mm->metype >= 9 && mm->metype <= 18 && a->lat != 0 && a->lon != 0) {
+		printf(" %14.10f %13.10f", a->lat, a->lon);
+	} else {
+		printf(" %14s %13s", "-", "-");
+	}
+			
     // details
     if (mm->msgtype == 0) {
-        // no Mode A
-        printf(" -    ");
-        // Mode C (altitude)
-        printf(" %5d", mm->altitude);
 		printf(" ACAS");
     } else if (mm->msgtype == 4 || mm->msgtype == 20) {
-        // no Mode A
-        printf(" -    ");
-        // Mode C reply (altitude)
-        printf(" %5d", mm->altitude);
         printf(" ROLLCALL FS=%d,DR=%d,UM=%d", mm->fs, mm->dr, mm->um);
         if (mm->msgtype == 20) {
             // TODO: display remaining 56 bits of 112 bits DF20 message
         }
     } else if (mm->msgtype == 5 || mm->msgtype == 21) {
-        // Mode A
-        printf(" A%04d", mm->identity);
-        // Mode C reply (altitude)
-        printf(" -    ");
         printf(" ROLLCALL FS=%d,DR=%d,UM=%d", mm->fs, mm->dr, mm->um);
         if (mm->msgtype == 21) {
             // TODO: display remaining 56 bits of 112 bits DF21 message
         }
     } else if (mm->msgtype == 11) {
-        // no Mode A and no mode C in ALLCALL replies
-        printf(" -    ");
-        printf(" -    ");
-        printf(" ALLCALL  ");
-        printf("CA=%d", mm->ca);
+        printf(" ALLCALL  CA=%d", mm->ca);
+	} else if (mm->msgtype == 16) {
+		printf(" ACAS");
     } else if (mm->msgtype == 17) {
-        // no Mode A
-        printf(" -    ");
-        // Mode C reply (altitude)
-        if (mm->metype >= 9 && mm->metype <= 18)
-            printf(" %5d", mm->altitude);
-        else
-            printf(" -    ");
-        printf(" ADS-B    ");
-        printf("CA=%d", mm->ca);
-        printf(",ME=%d/%d", mm->metype, mm->mesub);
+        printf(" ADS-B    CA=%d,ME=%d/%d", mm->ca, mm->metype, mm->mesub);
 
         // Decode the extended squitter message.
         /* 
@@ -1668,18 +1666,17 @@ void useModesMessage(struct modesMessage *mm) {
     if (!Modes.stats && (Modes.check_crc == 0 || mm->crcok)) {
         /* Track aircrafts in interactive mode or if the HTTP
          * interface is enabled. */
-        if (Modes.interactive || Modes.stat_http_requests > 0 || Modes.stat_sbs_connections > 0) {
+        if (Modes.interactive || Modes.stat_http_requests > 0 || Modes.stat_sbs_connections > 0 || Modes.tabular) {
             struct aircraft *a = interactiveReceiveData(mm);
-            if (a && Modes.stat_sbs_connections > 0) modesSendSBSOutput(mm, a);  /* Feed SBS output clients. */
+			// Feed SBS output clients.
+            if (a && Modes.stat_sbs_connections > 0) modesSendSBSOutput(mm, a);
+			// tabular technical output format
+			if(Modes.tabular) displayModesMessageTabular(mm, a);
         }
         /* In non-interactive way, display messages on standard output. */
-        if (!Modes.interactive) {
-            if(Modes.tabular) {
-                displayModesMessageTabular(mm);
-            } else {
-                displayModesMessage(mm);
-                if (!Modes.raw && !Modes.onlyaddr) printf("\n");
-            }
+        if (!Modes.interactive && !Modes.tabular) {
+            displayModesMessage(mm);
+            if (!Modes.raw && !Modes.onlyaddr) printf("\n");
         }
         /* Send data to connected clients. */
         if (Modes.net) {
