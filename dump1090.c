@@ -163,6 +163,7 @@ struct {
     int net_output_raw_port;        /* Raw output TCP port. */
     int net_input_raw_port;         /* Raw input TCP port. */
     int net_http_port;              /* HTTP port. */
+    int tabular;                    /* Tabular output mode */
     int interactive;                /* Interactive mode */
     int interactive_rows;           /* Interactive mode: max number of rows. */
     int interactive_ttl;            /* Interactive mode: TTL before deletion. */
@@ -227,7 +228,7 @@ struct modesMessage {
     int fs;                     /* Flight status for DF4,5,20,21 */
     int dr;                     /* Request extraction of downlink request. */
     int um;                     /* Request extraction of downlink request. */
-    int identity;               /* 13 bits identity (Squawk). */
+    int identity;               /* 13 bits identity mode A code (Squawk). */
 
     /* Fields used by multiple message types. */
     int altitude, unit;
@@ -273,6 +274,7 @@ void modesInitConfig(void) {
     Modes.net_http_port = MODES_NET_HTTP_PORT;
     Modes.onlyaddr = 0;
     Modes.debug = 0;
+    Modes.tabular = 0;
     Modes.interactive = 0;
     Modes.interactive_rows = MODES_INTERACTIVE_ROWS;
     Modes.interactive_ttl = MODES_INTERACTIVE_TTL;
@@ -1225,6 +1227,126 @@ void displayModesMessage(struct modesMessage *mm) {
     }
 }
 
+
+/* This function gets a decoded Mode S Message and prints it on the screen
+ * in a human readable format. */
+void displayModesMessageTabular(struct modesMessage *mm) {
+    int j;
+    // Mode S 24 bit address
+    printf("%02X%02X%02X ", mm->aa1, mm->aa2, mm->aa3);
+    // raw message.
+    printf("*");
+    for (j = 0; j < mm->msgbits/8; j++) printf("%02x", mm->msg[j]);
+    printf(";");
+    // fill remaining space
+    while (j < 15) {
+        printf("  ");
+        j++;
+    }
+
+    // CRC error
+    if (mm->crcok) {
+        // single bit error fixed
+        if (mm->errorbit != -1)
+            printf("1");
+        else
+            printf("-");
+    } else {
+        printf("C");
+    }
+    // DF message type DFxx
+    printf(" DF%-2d", mm->msgtype);
+	// Aircraft Identification (ACID, BDS20)
+	if (mm->flight[0] == 0)
+		printf(" %-8s", "-");
+	else
+		printf(" %-8s", mm->flight);
+
+    // details
+    if (mm->msgtype == 0) {
+        // no Mode A
+        printf(" -    ");
+        // Mode C (altitude)
+        printf(" %5d", mm->altitude);
+		printf(" ACAS");
+    } else if (mm->msgtype == 4 || mm->msgtype == 20) {
+        // no Mode A
+        printf(" -    ");
+        // Mode C reply (altitude)
+        printf(" %5d", mm->altitude);
+        printf(" ROLLCALL FS=%d,DR=%d,UM=%d", mm->fs, mm->dr, mm->um);
+        if (mm->msgtype == 20) {
+            // TODO: display remaining 56 bits of 112 bits DF20 message
+        }
+    } else if (mm->msgtype == 5 || mm->msgtype == 21) {
+        // Mode A
+        printf(" A%04d", mm->identity);
+        // Mode C reply (altitude)
+        printf(" -    ");
+        printf(" ROLLCALL FS=%d,DR=%d,UM=%d", mm->fs, mm->dr, mm->um);
+        if (mm->msgtype == 21) {
+            // TODO: display remaining 56 bits of 112 bits DF21 message
+        }
+    } else if (mm->msgtype == 11) {
+        // no Mode A and no mode C in ALLCALL replies
+        printf(" -    ");
+        printf(" -    ");
+        printf(" ALLCALL  ");
+        printf("CA=%d", mm->ca);
+    } else if (mm->msgtype == 17) {
+        // no Mode A
+        printf(" -    ");
+        // Mode C reply (altitude)
+        if (mm->metype >= 9 && mm->metype <= 18)
+            printf(" %5d", mm->altitude);
+        else
+            printf(" -    ");
+        printf(" ADS-B    ");
+        printf("CA=%d", mm->ca);
+        printf(",ME=%d/%d", mm->metype, mm->mesub);
+
+        // Decode the extended squitter message.
+        /* 
+        if (mm->metype >= 1 && mm->metype <= 4) {
+            // Aircraft identification.
+            char *ac_type_str[4] = {
+                "Aircraft Type D",
+                "Aircraft Type C",
+                "Aircraft Type B",
+                "Aircraft Type A"
+            };
+            printf(",actype=%s", ac_type_str[mm->aircraft_type]);
+            printf(",acid=%s", mm->flight);
+        } else if (mm->metype >= 9 && mm->metype <= 18) {
+            printf(",F=%s", mm->fflag ? "odd" : "even");
+            printf(",T=%s", mm->tflag ? "UTC" : "non-UTC");
+            printf(",Lat=%d", mm->raw_latitude);
+            printf(",Lon=%d", mm->raw_longitude);
+        } else if (mm->metype == 19 && mm->mesub >= 1 && mm->mesub <= 4) {
+            if (mm->mesub == 1 || mm->mesub == 2) {
+                // Velocity
+                printf(",EW-direction=%d", mm->ew_dir);
+                printf(",EW-velocity=%d", mm->ew_velocity);
+                printf(",NS-direction=%d", mm->ns_dir);
+                printf(",NS-velocity=%d", mm->ns_velocity);
+                printf(",VerticalRateSrc=%d", mm->vert_rate_source);
+                printf(",VerticalRateSign=%d", mm->vert_rate_sign);
+                printf(",VerticalRate=%d", mm->vert_rate);
+            } else if (mm->mesub == 3 || mm->mesub == 4) {
+                printf(",HeadingStatus=%d", mm->heading_is_valid);
+                printf(",Heading=%d", mm->heading);
+            }
+        } else {
+            printf(",UNK-ME=%d/%d", mm->metype, mm->mesub);
+        }
+        */
+    } else {
+        if (Modes.check_crc)
+            printf("UNK-DF=%d", mm->msgtype);
+    }
+    printf("\n");
+}
+
 /* Turn I/Q samples pointed by Modes.data into the magnitude vector
  * pointed by Modes.magnitude. */
 void computeMagnitudeVector(void) {
@@ -1552,8 +1674,12 @@ void useModesMessage(struct modesMessage *mm) {
         }
         /* In non-interactive way, display messages on standard output. */
         if (!Modes.interactive) {
-            displayModesMessage(mm);
-            if (!Modes.raw && !Modes.onlyaddr) printf("\n");
+            if(Modes.tabular) {
+                displayModesMessageTabular(mm);
+            } else {
+                displayModesMessage(mm);
+                if (!Modes.raw && !Modes.onlyaddr) printf("\n");
+            }
         }
         /* Send data to connected clients. */
         if (Modes.net) {
@@ -2457,6 +2583,8 @@ int main(int argc, char **argv) {
             Modes.metric = 1;
         } else if (!strcmp(argv[j],"--aggressive")) {
             Modes.aggressive++;
+        } else if (!strcmp(argv[j],"--tab")) {
+            Modes.tabular = 1;
         } else if (!strcmp(argv[j],"--interactive")) {
             Modes.interactive = 1;
         } else if (!strcmp(argv[j],"--interactive-rows")) {
